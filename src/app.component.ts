@@ -7,27 +7,27 @@ import { Component, ChangeDetectionStrategy, signal, computed } from '@angular/c
 })
 export class AppComponent {
   experiences = signal(['Jogos de Tabuleiro', 'Circo']);
-  selectedExperience = signal<string | null>(null);
+  selectedExperience = signal(null);
   
   rating = signal(10);
   reason = signal('');
   feedback = signal('');
   
-  submissionState = signal<'selecting' | 'filling' | 'submitted'>('selecting');
+  submissionState = signal('selecting');
 
   showReason = computed(() => this.rating() < 10);
 
-  selectExperience(experience: string): void {
+  selectExperience(experience) {
     this.selectedExperience.set(experience);
     this.submissionState.set('filling');
   }
 
-  updateRating(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
+  updateRating(event) {
+    const value = event.target.value;
     this.rating.set(Number(value));
   }
 
-  submitFeedback(): void {
+  submitFeedback() {
     if (this.selectedExperience()) {
       console.log('Feedback Submitted:');
       console.log('Experience:', this.selectedExperience());
@@ -40,7 +40,7 @@ export class AppComponent {
     }
   }
 
-  reset(): void {
+  reset() {
     this.selectedExperience.set(null);
     this.rating.set(10);
     this.reason.set('');
