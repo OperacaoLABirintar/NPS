@@ -10,25 +10,8 @@ export const AppComponent = Component({
   selector: 'app-root',
   standalone: true, // This is required for bootstrapApplication
   template: `
-<div class="min-h-screen w-full flex items-center justify-center p-4 bg-black bg-opacity-30">
+<main class="min-h-screen w-full flex items-center justify-center p-4">
   <div class="bg-[#f4f0e8]/95 backdrop-blur-sm rounded-xl shadow-2xl p-8 max-w-2xl w-full text-zinc-800 transform transition-all duration-500">
-
-    <header class="text-center mb-6">
-      <svg class="w-16 h-16 mx-auto mb-2 text-[#ffa400]" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="21" cy="21" r="18" />
-        <path d="M21,3a18,18,0,0,1,0,36" />
-        <path d="M21,39a18,18,0,0,1,0-36" />
-        <circle cx="21" cy="21" r="6" />
-        <path d="M21,15a6,6,0,0,1,0,12" />
-        <path d="M21,27a6,6,0,0,1,0-12" />
-        <path d="M15,21a6,6,0,0,1,12,0" />
-        <path d="M27,21a6,6,0,0,1-12,0" />
-      </svg>
-      <h1 class="font-slab text-4xl sm:text-5xl font-bold tracking-wide">
-        <span class="text-[#ff595a]">LABI</span><span class="text-[#ffa400]">RINTAR</span>
-      </h1>
-      <p class="text-zinc-600 mt-1">Lugar de Fazer e Ser</p>
-    </header>
 
     @switch (submissionState()) {
       @case ('selecting') {
@@ -90,7 +73,6 @@ export const AppComponent = Component({
           <div class="space-y-2">
             <label for="feedback" class="block font-bold text-zinc-700">
               Deixe aqui outras impressões e percepções sobre essa vivência.
-              <span class="font-normal text-sm text-zinc-500 block">(Opcional: O que você viu, sentiu ou aprendeu junto com as crianças?)</span>
             </label>
             <textarea id="feedback" rows="4" [value]="feedback()" (input)="feedback.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#ffa400] focus:border-[#ffa400] transition"></textarea>
           </div>
@@ -127,7 +109,7 @@ export const AppComponent = Component({
       }
     }
   </div>
-</div>
+</main>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })(class {
