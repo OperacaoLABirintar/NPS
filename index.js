@@ -1,9 +1,13 @@
 
 import '@angular/compiler';
 import { bootstrapApplication } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { AppComponent } from './src/app.component.js';
 
 bootstrapApplication(AppComponent, {
-  providers: [provideZonelessChangeDetection()],
+  providers: [
+    provideZonelessChangeDetection(),
+    provideHttpClient()
+  ],
 }).catch((err) => console.error(err));

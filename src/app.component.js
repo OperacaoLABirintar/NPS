@@ -1,5 +1,12 @@
 
-import { Component, ChangeDetectionStrategy, signal, computed } from '@angular/core';
+
+import { Component, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { finalize } from 'rxjs/operators';
+
+// !!! IMPORTANTE !!!
+// Substitua a string abaixo pela URL do seu Web App gerado pelo Google Apps Script.
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWylZNUo8lPU-3oBJfYTx7bUALIBjs0G28iKX-yA5lMM4x-bURDGimSCIC_O_ASPUY/exec';
 
 export const AppComponent = Component({
   selector: 'app-root',
@@ -29,20 +36,36 @@ export const AppComponent = Component({
       @case ('selecting') {
         <div class="text-center animate-fade-in">
           <h2 class="text-xl font-bold text-zinc-700 mb-4">Formulário Diagnóstico</h2>
-          <p class="mb-6 text-zinc-600">Por favor, selecione a experiência que deseja avaliar.</p>
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            @for (exp of experiences(); track exp) {
-              <button (click)="selectExperience(exp)" class="w-full sm:w-auto text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
-                {{ exp }}
-              </button>
-            }
-          </div>
+          @if (isLoading()) {
+            <div class="flex justify-center items-center py-8">
+               <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ffa400]"></div>
+            </div>
+            <p class="text-zinc-600">Carregando experiências...</p>
+          } @else if (error()) {
+            <div class="text-center text-red-600 bg-red-100 p-4 rounded-lg">
+              <p>{{ error() }}</p>
+            </div>
+          } @else if (experiences().length === 0) {
+            <div class="text-center text-zinc-600 bg-yellow-100 p-4 rounded-lg">
+              <p>Nenhuma experiência disponível para avaliação no momento.</p>
+            </div>
+          } @else {
+            <p class="mb-6 text-zinc-600">Por favor, selecione a experiência que deseja avaliar.</p>
+            <div class="flex flex-col gap-4 justify-center">
+              @for (exp of experiences(); track exp.name) {
+                <button (click)="selectExperience(exp)" class="w-full text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                  <span class="font-bold">{{ exp.name }}</span>
+                  <span class="block text-xs font-normal opacity-90">{{ formatDate(exp.dateObj) }}</span>
+                </button>
+              }
+            </div>
+          }
         </div>
       }
 
       @case ('filling') {
         <div class="space-y-6 animate-fade-in">
-          <h2 class="text-center text-xl font-bold text-zinc-700">Avaliação da Experiência: <span class="text-[#ff595a]">{{ selectedExperience() }}</span></h2>
+          <h2 class="text-center text-xl font-bold text-zinc-700">Avaliação da Experiência: <span class="text-[#ff595a]">{{ selectedExperience()?.name }}</span></h2>
           
           <div class="space-y-2">
             <label for="nps-slider" class="block font-bold text-zinc-700">De 0 a 10, quanto você recomendaria esta experiência?</label>
@@ -68,8 +91,15 @@ export const AppComponent = Component({
           </div>
 
           <div class="flex justify-end pt-4">
-            <button (click)="submitFeedback()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
-              Enviar Avaliação
+            <button (click)="submitFeedback()" [disabled]="isSubmitting()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 disabled:bg-gray-400 disabled:cursor-not-allowed">
+              @if (isSubmitting()) {
+                <span class="flex items-center">
+                  <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Enviando...
+                </span>
+              } @else {
+                <span>Enviar Avaliação</span>
+              }
             </button>
           </div>
         </div>
@@ -90,16 +120,57 @@ export const AppComponent = Component({
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })(class {
-  experiences = signal(['Jogos de Tabuleiro', 'Circo']);
+  httpClient = inject(HttpClient);
+
+  experiences = signal([]);
   selectedExperience = signal(null);
   
   rating = signal(10);
   reason = signal('');
   feedback = signal('');
   
-  submissionState = signal('selecting');
+  submissionState = signal('selecting'); // 'selecting', 'filling', 'submitted'
+  isLoading = signal(true);
+  isSubmitting = signal(false);
+  error = signal('');
 
   showReason = computed(() => this.rating() < 10);
+
+  ngOnInit() {
+    this.fetchExperiences();
+  }
+
+  fetchExperiences() {
+    this.isLoading.set(true);
+    this.error.set('');
+    this.httpClient.get(SCRIPT_URL)
+      .pipe(finalize(() => this.isLoading.set(false)))
+      .subscribe({
+        next: (response) => {
+          if (!response || !response.data) {
+             throw new Error("Invalid response structure");
+          }
+          const today = new Date();
+          const sevenDaysFromNow = new Date();
+          sevenDaysFromNow.setDate(today.getDate() + 7);
+
+          const relevantExperiences = response.data
+            .map(exp => ({...exp, dateObj: new Date(exp.date.replace(/-/g, '/'))}))
+            .filter(exp => exp.dateObj <= sevenDaysFromNow) // Mostra eventos passados e dos próximos 7 dias
+            .sort((a, b) => b.dateObj - a.dateObj); // Ordena pelos mais recentes primeiro
+          
+          this.experiences.set(relevantExperiences);
+        },
+        error: (err) => {
+          console.error('Failed to fetch experiences', err);
+          this.error.set('Não foi possível carregar as experiências. Verifique a URL do Script e a configuração da planilha.');
+        }
+      });
+  }
+
+  formatDate(dateObj) {
+    return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
 
   selectExperience(experience) {
     this.selectedExperience.set(experience);
@@ -112,15 +183,26 @@ export const AppComponent = Component({
   }
 
   submitFeedback() {
-    if (this.selectedExperience()) {
-      console.log('Feedback Submitted:');
-      console.log('Experience:', this.selectedExperience());
-      console.log('Rating:', this.rating());
-      if (this.showReason()) {
-        console.log('Reason:', this.reason());
-      }
-      console.log('General Feedback:', this.feedback());
-      this.submissionState.set('submitted');
+    if (this.selectedExperience() && !this.isSubmitting()) {
+      this.isSubmitting.set(true);
+      const payload = {
+        experience: this.selectedExperience().name,
+        rating: this.rating(),
+        reason: this.showReason() ? this.reason() : '',
+        feedback: this.feedback(),
+      };
+
+      this.httpClient.post(SCRIPT_URL, payload)
+        .pipe(finalize(() => this.isSubmitting.set(false)))
+        .subscribe({
+          next: () => {
+            this.submissionState.set('submitted');
+          },
+          error: (err) => {
+            console.error('Failed to submit feedback', err);
+            alert('Ocorreu um erro ao enviar seu feedback. Por favor, tente novamente.');
+          }
+        });
     }
   }
 
