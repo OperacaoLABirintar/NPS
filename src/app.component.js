@@ -1,5 +1,3 @@
-
-
 import { Component, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs/operators';
@@ -42,18 +40,25 @@ export const AppComponent = Component({
             </div>
             <p class="text-zinc-600">Carregando experiências...</p>
           } @else if (error()) {
-            <div class="text-center text-red-600 bg-red-100 p-4 rounded-lg">
-              <p>{{ error() }}</p>
+            <div class="text-left text-red-800 bg-red-100 p-4 rounded-lg">
+              <p class="font-bold mb-2">Ocorreu um erro:</p>
+              <pre class="whitespace-pre-wrap break-words text-sm">{{ error() }}</pre>
             </div>
           } @else if (experiences().length === 0) {
             <div class="text-center text-zinc-600 bg-yellow-100 p-4 rounded-lg">
-              <p>Nenhuma experiência disponível para avaliação no momento.</p>
+              @if (rawExperiencesCount() === 0) {
+                <p class="font-bold">Nenhuma experiência encontrada na planilha.</p>
+                <p class="text-sm mt-1">Por favor, verifique se a planilha "Events" contém dados e se as datas na coluna "EventDate" são válidas.</p>
+              } @else if (rawExperiencesCount() !== null) {
+                <p class="font-bold">Nenhuma experiência recente para avaliação.</p>
+                <p class="text-sm mt-1">Encontramos {{ rawExperiencesCount() }} experiências, mas o aplicativo mostra apenas eventos que já aconteceram ou que ocorrerão nos próximos 7 dias. Verifique as datas na sua planilha.</p>
+              }
             </div>
           } @else {
             <p class="mb-6 text-zinc-600">Por favor, selecione a experiência que deseja avaliar.</p>
             <div class="flex flex-col gap-4 justify-center">
               @for (exp of experiences(); track exp.name) {
-                <button (click)="selectExperience(exp)" class="w-full text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                <button (click)="selectExperience(exp)" class="w-full text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 text-left">
                   <span class="font-bold">{{ exp.name }}</span>
                   <span class="block text-xs font-normal opacity-90">{{ formatDate(exp.dateObj) }}</span>
                 </button>
@@ -90,10 +95,16 @@ export const AppComponent = Component({
             <textarea id="feedback" rows="4" [value]="feedback()" (input)="feedback.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#ffa400] focus:border-[#ffa400] transition"></textarea>
           </div>
 
+          @if (submissionError()) {
+            <div class="text-red-800 bg-red-100 p-3 rounded-lg text-center animate-fade-in">
+              <p>{{ submissionError() }}</p>
+            </div>
+          }
+
           <div class="flex justify-end pt-4">
-            <button (click)="submitFeedback()" [disabled]="isSubmitting()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 disabled:bg-gray-400 disabled:cursor-not-allowed">
+            <button (click)="submitFeedback()" [disabled]="isSubmitting()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed">
               @if (isSubmitting()) {
-                <span class="flex items-center">
+                <span class="flex items-center justify-center">
                   <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                   Enviando...
                 </span>
@@ -109,7 +120,7 @@ export const AppComponent = Component({
         <div class="text-center space-y-6 animate-fade-in py-8">
           <h2 class="font-slab text-3xl font-bold text-[#ff595a]">Obrigado!</h2>
           <p class="text-lg text-zinc-700">Seu feedback foi recebido com sucesso e é muito valioso para nós.</p>
-          <button (click)="reset()" class="mt-4 text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
+          <button (click)="reset()" class="mt-4 text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105">
             Fazer Outra Avaliação
           </button>
         </div>
@@ -123,6 +134,7 @@ export const AppComponent = Component({
   httpClient = inject(HttpClient);
 
   experiences = signal([]);
+  rawExperiencesCount = signal(null);
   selectedExperience = signal(null);
   
   rating = signal(10);
@@ -133,6 +145,7 @@ export const AppComponent = Component({
   isLoading = signal(true);
   isSubmitting = signal(false);
   error = signal('');
+  submissionError = signal('');
 
   showReason = computed(() => this.rating() < 10);
 
@@ -143,27 +156,41 @@ export const AppComponent = Component({
   fetchExperiences() {
     this.isLoading.set(true);
     this.error.set('');
-    this.httpClient.get(SCRIPT_URL)
+    this.rawExperiencesCount.set(null);
+    this.httpClient.get(SCRIPT_URL, { responseType: 'text' })
       .pipe(finalize(() => this.isLoading.set(false)))
       .subscribe({
-        next: (response) => {
-          if (!response || !response.data) {
-             throw new Error("Invalid response structure");
-          }
-          const today = new Date();
-          const sevenDaysFromNow = new Date();
-          sevenDaysFromNow.setDate(today.getDate() + 7);
+        next: (responseText) => {
+          try {
+            const response = JSON.parse(responseText);
+            
+            if (response.error) {
+              throw new Error(`Error from script: ${response.error}`);
+            }
 
-          const relevantExperiences = response.data
-            .map(exp => ({...exp, dateObj: new Date(exp.date.replace(/-/g, '/'))}))
-            .filter(exp => exp.dateObj <= sevenDaysFromNow) // Mostra eventos passados e dos próximos 7 dias
-            .sort((a, b) => b.dateObj - a.dateObj); // Ordena pelos mais recentes primeiro
-          
-          this.experiences.set(relevantExperiences);
+            if (!response || !Array.isArray(response.data)) {
+               throw new Error("Invalid response structure: 'data' array not found.");
+            }
+            
+            this.rawExperiencesCount.set(response.data.length);
+
+            const today = new Date();
+            const sevenDaysFromNow = new Date();
+            sevenDaysFromNow.setDate(today.getDate() + 7);
+
+            const relevantExperiences = response.data
+              .map(exp => ({...exp, dateObj: new Date(exp.date + 'T00:00:00')}))
+              .filter(exp => exp.dateObj instanceof Date && !isNaN(exp.dateObj) && exp.dateObj <= sevenDaysFromNow)
+              .sort((a, b) => b.dateObj - a.dateObj);
+            
+            this.experiences.set(relevantExperiences);
+          } catch (e) {
+            const shortResponse = responseText.substring(0, 500) + (responseText.length > 500 ? '...' : '');
+            this.error.set(`O servidor enviou uma resposta inesperada que não é um JSON válido. Verifique as permissões e o código do seu script.\n\nResposta recebida:\n"${shortResponse}"`);
+          }
         },
         error: (err) => {
-          console.error('Failed to fetch experiences', err);
-          this.error.set('Não foi possível carregar as experiências. Verifique a URL do Script e a configuração da planilha.');
+          this.error.set(`Não foi possível conectar ao servidor. Verifique sua conexão com a internet ou se a URL do script está correta. \n\nDetalhes técnicos: ${err.name} - ${err.statusText}`);
         }
       });
   }
@@ -185,6 +212,7 @@ export const AppComponent = Component({
   submitFeedback() {
     if (this.selectedExperience() && !this.isSubmitting()) {
       this.isSubmitting.set(true);
+      this.submissionError.set('');
       const payload = {
         experience: this.selectedExperience().name,
         rating: this.rating(),
@@ -195,12 +223,18 @@ export const AppComponent = Component({
       this.httpClient.post(SCRIPT_URL, payload)
         .pipe(finalize(() => this.isSubmitting.set(false)))
         .subscribe({
-          next: () => {
-            this.submissionState.set('submitted');
+          next: (response) => {
+            if (response && response.status === 'success') {
+              this.submissionState.set('submitted');
+            } else {
+              const message = response?.message || 'O servidor retornou um erro inesperado.';
+              console.error('Feedback submission failed on server:', message);
+              this.submissionError.set(`Ocorreu um erro ao enviar seu feedback: ${message}`);
+            }
           },
           error: (err) => {
             console.error('Failed to submit feedback', err);
-            alert('Ocorreu um erro ao enviar seu feedback. Por favor, tente novamente.');
+            this.submissionError.set('Ocorreu um erro de comunicação ao enviar seu feedback. Por favor, tente novamente.');
           }
         });
     }
@@ -211,6 +245,8 @@ export const AppComponent = Component({
     this.rating.set(10);
     this.reason.set('');
     this.feedback.set('');
+    this.submissionError.set('');
     this.submissionState.set('selecting');
+    this.fetchExperiences();
   }
 });
