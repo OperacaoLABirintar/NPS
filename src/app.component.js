@@ -19,7 +19,7 @@ export const AppComponent = Component({
       @case ('selecting') {
         <div class="text-center animate-fade-in flex flex-col flex-grow min-h-0">
           <div class="flex-shrink-0">
-            <h2 class="text-xl font-bold text-zinc-700 mb-4">Formulário Diagnóstico</h2>
+            <h2 class="text-xl font-bold text-zinc-700 mb-4">Avaliação da Experiência</h2>
           </div>
 
           @if (isLoading()) {
@@ -40,7 +40,7 @@ export const AppComponent = Component({
           } @else {
             <div class="flex flex-col flex-grow min-h-0">
             <p class="mb-6 text-zinc-600 flex-shrink-0">Por favor, selecione a experiência que deseja avaliar.</p>
-            <div class="overflow-y-auto overflow-x-hidden flex-grow pr-4 pt-1">
+            <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
                 <div class="flex flex-col gap-4">
                   @for (exp of experiences(); track exp.name) {
                     <button (click)="selectExperience(exp.name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
@@ -56,11 +56,11 @@ export const AppComponent = Component({
       }
 
       @case ('filling') {
-        <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow pr-4">
+        <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow px-4">
           <h2 class="text-center text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ selectedExperience() }}</span></h2>
           
           <div class="space-y-2">
-            <label for="nps-slider" class="block font-bold text-zinc-700">De 0 a 10, quanto você recomendaria?</label>
+            <label for="nps-slider" class="block font-bold text-zinc-700">De 0 a 10, quanto você recomendaria a experiência vivenciada?</label>
             <div class="flex items-center gap-4">
               <input id="nps-slider" type="range" min="0" max="10" [value]="rating()" (input)="updateRating($event)" class="w-full" />
               <span class="font-slab text-2xl font-bold text-[#ffa400] w-10 text-center">{{ rating() }}</span>
@@ -70,7 +70,7 @@ export const AppComponent = Component({
           @if (showReason()) {
             <div class="space-y-2 animate-fade-in">
               <label for="reason" class="block font-bold text-zinc-700">Por que não 10?</label>
-              <textarea id="reason" rows="3" [value]="reason()" (input)="reason.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#ffa400] focus:border-[#ffa400] transition"></textarea>
+              <textarea id="reason" rows="3" [value]="reason()" (input)="reason.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ffa400] focus:border-transparent transition"></textarea>
             </div>
           }
 
@@ -79,7 +79,7 @@ export const AppComponent = Component({
               Deixe aqui outras impressões sobre essa vivência.
               <span class="font-normal text-sm text-zinc-500 block">(Opcional: O que você viu, sentiu ou aprendeu?)</span>
             </label>
-            <textarea id="feedback" rows="4" [value]="feedback()" (input)="feedback.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#ffa400] focus:border-[#ffa400] transition"></textarea>
+            <textarea id="feedback" rows="4" [value]="feedback()" (input)="feedback.set($any($event.target).value)" class="w-full p-3 bg-white/60 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ffa400] focus:border-transparent transition"></textarea>
           </div>
 
           @if(submissionError()) {
