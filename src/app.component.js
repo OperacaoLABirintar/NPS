@@ -15,11 +15,14 @@
  * 1. Aba: `Experiences`
  *    - Propósito: Listar as experiências que aparecerão no formulário.
  *    - Colunas:
- *      - A: `ExperienceName` (string) - O nome único da experiência ou sub-experiência.
- *      - B: `ExperienceDate` (date) - A data da experiência no formato AAAA-MM-DD.
- *      - C: `ParentExperience` (string, opcional) - Se for uma sub-experiência,
- *           coloque aqui o nome exato da `ExperienceName` do evento principal.
- *           Deixe em branco se for um evento principal.
+ *      - A: `PK` (string) - Uma chave primária única para cada linha de experiência.
+ *      - B: `ExperienceName` (string) - O nome da experiência.
+ *      - C: `ExperienceDate` (date) - A data da experiência no formato AAAA-MM-DD.
+ *      - D: `ParentExperience` (string, opcional) - Se for uma sub-experiência,
+ *           coloque aqui o `PK` da experiência principal. Deixe em branco se for
+ *           um evento principal.
+ *      - E: `Closed` (boolean) - Um checkbox. Se marcado (`TRUE`), a experiência
+ *           não será carregada no aplicativo.
  * 
  * 2. Aba: `Feedback`
  *    - Propósito: Armazenar os feedbacks enviados pelo formulário.
@@ -60,44 +63,52 @@
  *     const data = sheet.getDataRange().getValues();
  *     const headers = data.shift(); // Remove o cabeçalho
  *     
+ *     const pkIndex = headers.indexOf('PK');
  *     const nameIndex = headers.indexOf('ExperienceName');
  *     const dateIndex = headers.indexOf('ExperienceDate');
- *     const parentIndex = headers.indexOf('ParentExperience');
+ *     const parentPkIndex = headers.indexOf('ParentExperience');
+ *     const closedIndex = headers.indexOf('Closed');
  * 
- *     if (nameIndex === -1 || dateIndex === -1 || parentIndex === -1) {
- *       throw new Error("Columns 'ExperienceName', 'ExperienceDate', or 'ParentExperience' not found in 'Experiences' sheet.");
+ *     if (pkIndex === -1 || nameIndex === -1 || dateIndex === -1 || parentPkIndex === -1 || closedIndex === -1) {
+ *       throw new Error("Columns 'PK', 'ExperienceName', 'ExperienceDate', 'ParentExperience', or 'Closed' not found in 'Experiences' sheet.");
  *     }
  * 
  *     const experiencesMap = {};
  *     const rootExperiences = [];
  * 
  *     data.forEach(row => {
+ *       const isClosed = row[closedIndex] === true; // Checkbox é lido como booleano
+ *       if (isClosed) return; // Pula a linha se a experiência estiver fechada
+ * 
+ *       const pk = row[pkIndex];
  *       const name = row[nameIndex];
  *       const date = row[dateIndex] ? new Date(row[dateIndex]).toISOString().split('T')[0] : null;
- *       const parentName = row[parentIndex];
+ *       const parentPk = row[parentPkIndex];
  *       
- *       if (!name || !date) return; // Pula linhas sem nome ou data
+ *       if (!pk || !name || !date) return; // Pula linhas sem PK, nome ou data
  * 
- *       experiencesMap[name] = {
+ *       experiencesMap[pk] = {
+ *         pk: pk,
  *         name: name,
  *         date: date,
- *         parentName: parentName,
+ *         parentPk: parentPk,
  *         subExperiences: []
  *       };
  *     });
  * 
  *     Object.values(experiencesMap).forEach(exp => {
- *       if (exp.parentName && experiencesMap[exp.parentName]) {
+ *       if (exp.parentPk && experiencesMap[exp.parentPk]) {
  *         // É uma sub-experiência, anexa ao pai
- *         experiencesMap[exp.parentName].subExperiences.push({ name: exp.name, date: exp.date });
+ *         experiencesMap[exp.parentPk].subExperiences.push({ pk: exp.pk, name: exp.name, date: exp.date });
  *       } else {
  *         // É uma experiência principal (raiz)
  *         rootExperiences.push(exp);
  *       }
  *     });
  * 
- *     // Limpa a resposta final para não incluir a propriedade 'parentName'
+ *     // Limpa a resposta final para não incluir a propriedade 'parentPk'
  *     const finalResponseData = rootExperiences.map(exp => ({
+ *       pk: exp.pk,
  *       name: exp.name,
  *       date: exp.date,
  *       subExperiences: exp.subExperiences
@@ -173,11 +184,16 @@ const NEW_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjxeHpXL8nUtVpY
 export const AppComponent = Component({
   selector: 'app-root',
   standalone: true,
+  imports: [],
   template: `
 <div class="h-screen w-full flex flex-col overflow-hidden">
   <header class="h-28 flex-shrink-0"></header>
   <main class="flex-grow w-full flex items-center justify-center p-4 min-h-0">
     <div class="bg-[#f4f0e8]/95 backdrop-blur-sm rounded-xl shadow-2xl p-8 max-w-2xl w-full text-zinc-800 transform transition-all duration-500 flex flex-col max-h-full">
+      
+      <header class="mb-6 flex-shrink-0 relative">
+        <!-- Header content removed -->
+      </header>
 
     @switch (submissionState()) {
       @case ('selectingParent') {
@@ -206,8 +222,8 @@ export const AppComponent = Component({
             <p class="mb-6 text-zinc-600 flex-shrink-0">Por favor, selecione a experiência que deseja avaliar.</p>
             <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
                 <div class="flex flex-col gap-4">
-                  @for (exp of experiences(); track exp.name) {
-                    <button (click)="selectParent(exp)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                  @for (exp of experiences(); track exp.pk) {
+                    <button (click)="prepareEvaluationGroup(exp)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
                       <span class="font-bold">{{ exp.name }}</span>
                       <span class="block text-xs font-normal opacity-90">{{ formatDate(exp.dateObj) }}</span>
                     </button>
@@ -219,7 +235,7 @@ export const AppComponent = Component({
         </div>
       }
 
-      @case ('selectingSub') {
+      @case ('confirmingGroup') {
         <div class="animate-fade-in flex flex-col flex-grow min-h-0">
           <div class="flex-shrink-0 relative">
               <button (click)="backToParentSelection()" title="Voltar" class="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-[#ff595a] transition-colors p-2">
@@ -227,26 +243,28 @@ export const AppComponent = Component({
                     <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
               </button>
-              <h2 class="text-center text-xl font-bold text-zinc-700">
-                <span class="text-zinc-700/80 block text-base font-normal">Evento Principal:</span>
-                {{ selectedParent().name }}
-              </h2>
+              <h2 class="text-center text-xl font-bold text-zinc-700">Confirmar Avaliação</h2>
           </div>
           <div class="flex flex-col flex-grow min-h-0">
-            <p class="mt-6 mb-4 text-zinc-600 text-center flex-shrink-0">Selecione o que você deseja avaliar:</p>
+            <p class="mt-6 mb-4 text-zinc-600 text-center flex-shrink-0">Você irá avaliar as seguintes experiências em sequência:</p>
             <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
-              <div class="flex flex-col gap-4">
-                <button (click)="startEvaluation(selectedParent().name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
-                  <span class="font-bold">Avaliar o evento como um todo</span>
-                  <span class="block text-xs font-normal opacity-90">{{ formatDate(selectedParent().dateObj) }}</span>
-                </button>
-                @for (sub of selectedParent().subExperiences; track sub.name) {
-                  <button (click)="startEvaluation(sub.name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
-                    <span class="font-bold">{{ sub.name }}</span>
-                    <span class="block text-xs font-normal opacity-90">{{ formatDate(sub.dateObj) }}</span>
-                  </button>
+              <ul class="space-y-3">
+                <li class="bg-white/70 p-3 rounded-lg shadow-sm">
+                  <p class="font-bold text-[#ff595a]">{{ evaluationGroup().parent.name }}</p>
+                  <p class="text-xs text-zinc-500">{{ formatDate(evaluationGroup().parent.dateObj) }} (Evento Principal)</p>
+                </li>
+                @for (sub of evaluationGroup().children; track sub.pk) {
+                  <li class="bg-white/70 p-3 rounded-lg shadow-sm">
+                    <p class="font-bold text-zinc-800">{{ sub.name }}</p>
+                    <p class="text-xs text-zinc-500">{{ formatDate(sub.dateObj) }} (Sub-experiência)</p>
+                  </li>
                 }
-              </div>
+              </ul>
+            </div>
+            <div class="flex justify-end pt-4 mt-4 border-t border-gray-200">
+              <button (click)="startEvaluationFlow()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
+                Iniciar Avaliação
+              </button>
             </div>
           </div>
         </div>
@@ -254,7 +272,14 @@ export const AppComponent = Component({
 
       @case ('filling') {
         <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow px-4">
-          <h2 class="text-center text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ selectedExperience() }}</span></h2>
+          <div class="text-center">
+              @if (currentEvaluationProgress().total > 1) {
+                  <p class="text-sm font-bold text-zinc-500 mb-2">
+                      Passo {{ currentEvaluationProgress().current }} de {{ currentEvaluationProgress().total }}
+                  </p>
+              }
+              <h2 class="text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ currentExperience().name }}</span></h2>
+          </div>
           
           <div class="space-y-2">
             <label for="nps-slider" class="block font-bold text-zinc-700">De 0 a 10, quanto você recomendaria a experiência vivenciada?</label>
@@ -291,7 +316,7 @@ export const AppComponent = Component({
               @if(isSubmitting()) {
                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               } @else {
-                <span>Enviar</span>
+                <span>{{ currentEvaluationProgress().current < currentEvaluationProgress().total ? 'Próximo' : 'Enviar Avaliação' }}</span>
               }
             </button>
           </div>
@@ -322,9 +347,11 @@ export const AppComponent = Component({
   error = signal('');
   
   // State for form submission
-  submissionState = signal('selectingParent'); // 'selectingParent', 'selectingSub', 'filling', 'submitted'
-  selectedParent = signal(null);
-  selectedExperience = signal(null);
+  submissionState = signal('selectingParent'); // 'selectingParent', 'confirmingGroup', 'filling', 'submitted'
+  evaluationGroup = signal(null);
+  evaluationQueue = signal([]);
+  currentExperience = signal(null);
+
   rating = signal(10);
   reason = signal('');
   feedback = signal('');
@@ -332,6 +359,14 @@ export const AppComponent = Component({
   submissionError = signal('');
 
   showReason = computed(() => this.rating() < 10);
+
+  currentEvaluationProgress = computed(() => {
+    if (!this.currentExperience() || this.evaluationQueue().length === 0) {
+        return { current: 0, total: 0 };
+    }
+    const currentIndex = this.evaluationQueue().findIndex(exp => exp.pk === this.currentExperience().pk);
+    return { current: currentIndex + 1, total: this.evaluationQueue().length };
+  });
 
   ngOnInit() {
     this.fetchExperiences();
@@ -382,22 +417,30 @@ export const AppComponent = Component({
       });
   }
 
-  selectParent(parent) {
+  prepareEvaluationGroup(parent) {
     if (parent.subExperiences && parent.subExperiences.length > 0) {
-      this.selectedParent.set(parent);
-      this.submissionState.set('selectingSub');
+        this.evaluationGroup.set({ parent, children: parent.subExperiences });
+        this.submissionState.set('confirmingGroup');
     } else {
-      this.startEvaluation(parent.name);
+        this.evaluationGroup.set({ parent, children: [] });
+        this.startEvaluationFlow();
     }
   }
 
-  startEvaluation(experienceName) {
-    this.selectedExperience.set(experienceName);
-    this.submissionState.set('filling');
+  startEvaluationFlow() {
+      const group = this.evaluationGroup();
+      if (!group) return;
+
+      const queue = [group.parent, ...group.children];
+      this.evaluationQueue.set(queue);
+
+      this.currentExperience.set(queue[0]);
+      this.resetFormFields();
+      this.submissionState.set('filling');
   }
 
   backToParentSelection() {
-    this.selectedParent.set(null);
+    this.evaluationGroup.set(null);
     this.submissionState.set('selectingParent');
   }
   
@@ -412,7 +455,7 @@ export const AppComponent = Component({
     this.submissionError.set('');
 
     const payload = {
-      experience: this.selectedExperience(),
+      experience: this.currentExperience().name,
       rating: this.rating(),
       reason: this.showReason() ? this.reason() : '',
       feedback: this.feedback(),
@@ -425,7 +468,15 @@ export const AppComponent = Component({
       .subscribe({
         next: (response) => {
           if (response.status === 'success') {
-            this.submissionState.set('submitted');
+            const queue = this.evaluationQueue();
+            const currentIndex = queue.findIndex(exp => exp.pk === this.currentExperience().pk);
+
+            if (currentIndex + 1 < queue.length) {
+                this.currentExperience.set(queue[currentIndex + 1]);
+                this.resetFormFields();
+            } else {
+                this.submissionState.set('submitted');
+            }
           } else {
             this.submissionError.set(response.message || 'Ocorreu um erro desconhecido no servidor.');
           }
@@ -436,13 +487,18 @@ export const AppComponent = Component({
       });
   }
 
+  resetFormFields() {
+      this.rating.set(10);
+      this.reason.set('');
+      this.feedback.set('');
+      this.submissionError.set('');
+  }
+
   reset() {
-    this.selectedExperience.set(null);
-    this.selectedParent.set(null);
-    this.rating.set(10);
-    this.reason.set('');
-    this.feedback.set('');
-    this.submissionError.set('');
+    this.currentExperience.set(null);
+    this.evaluationGroup.set(null);
+    this.evaluationQueue.set([]);
+    this.resetFormFields();
     this.submissionState.set('selectingParent');
     this.fetchExperiences();
   }
