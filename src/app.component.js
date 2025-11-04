@@ -237,35 +237,52 @@ export const AppComponent = Component({
 
       @case ('confirmingGroup') {
         <div class="animate-fade-in flex flex-col flex-grow min-h-0">
-          <div class="flex-shrink-0 relative">
+          <div class="flex-shrink-0 relative mb-4">
               <button (click)="backToParentSelection()" title="Voltar" class="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-[#ff595a] transition-colors p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
               </button>
-              <h2 class="text-center text-xl font-bold text-zinc-700">Confirmar Avaliação</h2>
+              <h2 class="text-center text-xl font-bold text-zinc-700">Avaliar Experiências</h2>
           </div>
-          <div class="flex flex-col flex-grow min-h-0">
-            <p class="mt-6 mb-4 text-zinc-600 text-center flex-shrink-0">Você irá avaliar as seguintes experiências em sequência:</p>
-            <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
-              <ul class="space-y-3">
-                <li class="bg-white/70 p-3 rounded-lg shadow-sm">
-                  <p class="font-bold text-[#ff595a]">{{ evaluationGroup().parent.name }}</p>
-                  <p class="text-xs text-zinc-500">{{ formatDate(evaluationGroup().parent.dateObj) }} (Evento Principal)</p>
-                </li>
-                @for (sub of evaluationGroup().children; track sub.pk) {
-                  <li class="bg-white/70 p-3 rounded-lg shadow-sm">
-                    <p class="font-bold text-zinc-800">{{ sub.name }}</p>
-                    <p class="text-xs text-zinc-500">{{ formatDate(sub.dateObj) }} (Sub-experiência)</p>
-                  </li>
+           <p class="text-center text-zinc-600 mb-4 flex-shrink-0">Selecione uma experiência para avaliar. A avaliação do evento principal será liberada após avaliar as demais.</p>
+          
+          <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1 space-y-3">
+            @for (sub of evaluationGroup().children; track sub.pk) {
+              <button (click)="startEvaluation(sub)" [disabled]="isEvaluated(sub.pk)"
+                class="w-full text-left p-3 rounded-lg shadow-sm transition-all duration-300 flex items-center justify-between"
+                [class]="isEvaluated(sub.pk) ? 'bg-green-100 text-green-800 opacity-80 cursor-not-allowed' : 'bg-white/70 hover:bg-white/100 hover:shadow-md transform hover:-translate-y-px'">
+                <div>
+                  <p class="font-bold text-zinc-800">{{ sub.name }}</p>
+                  <p class="text-xs text-zinc-500">{{ formatDate(sub.dateObj) }} (Sub-experiência)</p>
+                </div>
+                @if(isEvaluated(sub.pk)) {
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 }
-              </ul>
-            </div>
-            <div class="flex justify-end pt-4 mt-4 border-t border-gray-200">
-              <button (click)="startEvaluationFlow()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
-                Iniciar Avaliação
               </button>
-            </div>
+            }
+          </div>
+
+          <div class="pt-4 mt-4 border-t border-gray-200 flex-shrink-0">
+            <button (click)="startEvaluation(evaluationGroup().parent)" [disabled]="!allChildrenEvaluated() || isEvaluated(evaluationGroup().parent.pk)"
+              class="w-full text-left p-3 rounded-lg shadow-sm transition-all duration-300 flex items-center justify-between"
+              [class]="isEvaluated(evaluationGroup().parent.pk) ? 'bg-green-100 text-green-800 opacity-80 cursor-not-allowed' : !allChildrenEvaluated() ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-[#ff595a]/20 hover:bg-[#ff595a]/30 hover:shadow-md transform hover:-translate-y-px'">
+              <div>
+                <p class="font-bold text-[#ff595a]">{{ evaluationGroup().parent.name }}</p>
+                <p class="text-xs text-zinc-500">{{ formatDate(evaluationGroup().parent.dateObj) }} (Evento Principal)</p>
+              </div>
+              @if(isEvaluated(evaluationGroup().parent.pk)) {
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              } @else if (!allChildrenEvaluated()) {
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              }
+            </button>
           </div>
         </div>
       }
@@ -273,11 +290,6 @@ export const AppComponent = Component({
       @case ('filling') {
         <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow px-4">
           <div class="text-center">
-              @if (currentEvaluationProgress().total > 1) {
-                  <p class="text-sm font-bold text-zinc-500 mb-2">
-                      Passo {{ currentEvaluationProgress().current }} de {{ currentEvaluationProgress().total }}
-                  </p>
-              }
               <h2 class="text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ currentExperience().name }}</span></h2>
           </div>
           
@@ -316,7 +328,7 @@ export const AppComponent = Component({
               @if(isSubmitting()) {
                 <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               } @else {
-                <span>{{ currentEvaluationProgress().current < currentEvaluationProgress().total ? 'Próximo' : 'Enviar Avaliação' }}</span>
+                <span>Enviar Avaliação</span>
               }
             </button>
           </div>
@@ -327,9 +339,7 @@ export const AppComponent = Component({
         <div class="text-center space-y-6 animate-fade-in py-8 flex-grow flex flex-col justify-center">
           <h2 class="font-slab text-3xl font-bold text-[#ff595a]">Obrigado!</h2>
           <p class="text-lg text-zinc-700">Seu feedback foi recebido com sucesso.</p>
-          <button (click)="reset()" class="mt-4 text-white font-bold py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
-            Fazer Outra Avaliação
-          </button>
+          <p class="text-sm text-zinc-500 mt-4">Você já pode fechar esta janela.</p>
         </div>
       }
     }
@@ -349,8 +359,8 @@ export const AppComponent = Component({
   // State for form submission
   submissionState = signal('selectingParent'); // 'selectingParent', 'confirmingGroup', 'filling', 'submitted'
   evaluationGroup = signal(null);
-  evaluationQueue = signal([]);
   currentExperience = signal(null);
+  evaluatedPks = signal(new Set());
 
   rating = signal(10);
   reason = signal('');
@@ -360,12 +370,13 @@ export const AppComponent = Component({
 
   showReason = computed(() => this.rating() < 10);
 
-  currentEvaluationProgress = computed(() => {
-    if (!this.currentExperience() || this.evaluationQueue().length === 0) {
-        return { current: 0, total: 0 };
+  allChildrenEvaluated = computed(() => {
+    const group = this.evaluationGroup();
+    if (!group || !group.children || group.children.length === 0) {
+      return true;
     }
-    const currentIndex = this.evaluationQueue().findIndex(exp => exp.pk === this.currentExperience().pk);
-    return { current: currentIndex + 1, total: this.evaluationQueue().length };
+    const evaluated = this.evaluatedPks();
+    return group.children.every(child => evaluated.has(child.pk));
   });
 
   ngOnInit() {
@@ -417,30 +428,30 @@ export const AppComponent = Component({
       });
   }
 
+  isEvaluated(pk) {
+    return this.evaluatedPks().has(pk);
+  }
+
   prepareEvaluationGroup(parent) {
-    if (parent.subExperiences && parent.subExperiences.length > 0) {
-        this.evaluationGroup.set({ parent, children: parent.subExperiences });
+    const group = { parent, children: parent.subExperiences || [] };
+    this.evaluationGroup.set(group);
+
+    if (group.children.length > 0) {
         this.submissionState.set('confirmingGroup');
     } else {
-        this.evaluationGroup.set({ parent, children: [] });
-        this.startEvaluationFlow();
+        this.startEvaluation(parent);
     }
   }
 
-  startEvaluationFlow() {
-      const group = this.evaluationGroup();
-      if (!group) return;
-
-      const queue = [group.parent, ...group.children];
-      this.evaluationQueue.set(queue);
-
-      this.currentExperience.set(queue[0]);
+  startEvaluation(experience) {
+      this.currentExperience.set(experience);
       this.resetFormFields();
       this.submissionState.set('filling');
   }
 
   backToParentSelection() {
     this.evaluationGroup.set(null);
+    this.evaluatedPks.set(new Set());
     this.submissionState.set('selectingParent');
   }
   
@@ -468,14 +479,15 @@ export const AppComponent = Component({
       .subscribe({
         next: (response) => {
           if (response.status === 'success') {
-            const queue = this.evaluationQueue();
-            const currentIndex = queue.findIndex(exp => exp.pk === this.currentExperience().pk);
+            const evaluatedPk = this.currentExperience().pk;
+            this.evaluatedPks.update(pks => new Set(pks).add(evaluatedPk));
+            
+            const wasParent = evaluatedPk === this.evaluationGroup().parent.pk;
 
-            if (currentIndex + 1 < queue.length) {
-                this.currentExperience.set(queue[currentIndex + 1]);
-                this.resetFormFields();
-            } else {
+            if (wasParent) {
                 this.submissionState.set('submitted');
+            } else {
+                this.submissionState.set('confirmingGroup');
             }
           } else {
             this.submissionError.set(response.message || 'Ocorreu um erro desconhecido no servidor.');
@@ -497,7 +509,7 @@ export const AppComponent = Component({
   reset() {
     this.currentExperience.set(null);
     this.evaluationGroup.set(null);
-    this.evaluationQueue.set([]);
+    this.evaluatedPks.set(new Set());
     this.resetFormFields();
     this.submissionState.set('selectingParent');
     this.fetchExperiences();
