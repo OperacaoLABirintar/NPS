@@ -1,10 +1,174 @@
+/**
+ * =============================================================================
+ * DOCUMENTAÇÃO DO BACKEND (GOOGLE SHEETS & APPS SCRIPT)
+ * =============================================================================
+ * 
+ * Este arquivo Angular interage com um backend implementado utilizando
+ * Google Sheets como banco de dados e Google Apps Script como API.
+ * 
+ * -----------------------------------------------------------------------------
+ * ESTRUTURA DA PLANILHA (GOOGLE SHEETS)
+ * -----------------------------------------------------------------------------
+ * 
+ * A planilha deve conter duas abas com os nomes e colunas exatas abaixo:
+ * 
+ * 1. Aba: `Experiences`
+ *    - Propósito: Listar as experiências que aparecerão no formulário.
+ *    - Colunas:
+ *      - A: `ExperienceName` (string) - O nome único da experiência ou sub-experiência.
+ *      - B: `ExperienceDate` (date) - A data da experiência no formato AAAA-MM-DD.
+ *      - C: `ParentExperience` (string, opcional) - Se for uma sub-experiência,
+ *           coloque aqui o nome exato da `ExperienceName` do evento principal.
+ *           Deixe em branco se for um evento principal.
+ * 
+ * 2. Aba: `Feedback`
+ *    - Propósito: Armazenar os feedbacks enviados pelo formulário.
+ *    - Colunas:
+ *      - A: `Timestamp` (datetime) - Data e hora do envio (preenchido automaticamente).
+ *      - B: `Experience` (string) - Nome da experiência/sub-experiência avaliada.
+ *      - C: `Rating` (number) - A nota de 0 a 10.
+ *      - D: `Reason` (string) - O motivo para a nota (se não for 10).
+ *      - E: `Feedback` (string) - O feedback qualitativo.
+ *      - F: `Classificação` (string) - (Opcional, pode ser usado para análises posteriores, como NPS).
+ * 
+ * -----------------------------------------------------------------------------
+ * CÓDIGO DO GOOGLE APPS SCRIPT (GAS)
+ * -----------------------------------------------------------------------------
+ * 
+ * Este é o código que deve ser colado no editor de scripts do Google Sheets
+ * e implantado como um Aplicativo Web.
+ * 
+ * ```javascript
+ * // Nomes exatos das abas da sua planilha
+ * const EXPERIENCES_SHEET_NAME = 'Experiences';
+ * const FEEDBACK_SHEET_NAME = 'Feedback';
+ * 
+ * // Função para buscar uma aba pelo nome de forma segura
+ * function getSheet(sheetName) {
+ *   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+ *   const sheet = spreadsheet.getSheetByName(sheetName);
+ *   if (!sheet) {
+ *     throw new Error(`Sheet with name "${sheetName}" not found.`);
+ *   }
+ *   return sheet;
+ * }
+ * 
+ * // Função executada quando o app faz uma requisição GET (para carregar dados)
+ * function doGet(e) {
+ *   try {
+ *     const sheet = getSheet(EXPERIENCES_SHEET_NAME);
+ *     const data = sheet.getDataRange().getValues();
+ *     const headers = data.shift(); // Remove o cabeçalho
+ *     
+ *     const nameIndex = headers.indexOf('ExperienceName');
+ *     const dateIndex = headers.indexOf('ExperienceDate');
+ *     const parentIndex = headers.indexOf('ParentExperience');
+ * 
+ *     if (nameIndex === -1 || dateIndex === -1 || parentIndex === -1) {
+ *       throw new Error("Columns 'ExperienceName', 'ExperienceDate', or 'ParentExperience' not found in 'Experiences' sheet.");
+ *     }
+ * 
+ *     const experiencesMap = {};
+ *     const rootExperiences = [];
+ * 
+ *     data.forEach(row => {
+ *       const name = row[nameIndex];
+ *       const date = row[dateIndex] ? new Date(row[dateIndex]).toISOString().split('T')[0] : null;
+ *       const parentName = row[parentIndex];
+ *       
+ *       if (!name || !date) return; // Pula linhas sem nome ou data
+ * 
+ *       experiencesMap[name] = {
+ *         name: name,
+ *         date: date,
+ *         parentName: parentName,
+ *         subExperiences: []
+ *       };
+ *     });
+ * 
+ *     Object.values(experiencesMap).forEach(exp => {
+ *       if (exp.parentName && experiencesMap[exp.parentName]) {
+ *         // É uma sub-experiência, anexa ao pai
+ *         experiencesMap[exp.parentName].subExperiences.push({ name: exp.name, date: exp.date });
+ *       } else {
+ *         // É uma experiência principal (raiz)
+ *         rootExperiences.push(exp);
+ *       }
+ *     });
+ * 
+ *     // Limpa a resposta final para não incluir a propriedade 'parentName'
+ *     const finalResponseData = rootExperiences.map(exp => ({
+ *       name: exp.name,
+ *       date: exp.date,
+ *       subExperiences: exp.subExperiences
+ *     }));
+ * 
+ *     const response = { data: finalResponseData };
+ *     
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify(response))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ * 
+ *   } catch (error) {
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify({ error: error.message }))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ *   }
+ * }
+ * 
+ * // Função executada quando o app faz uma requisição POST (para enviar dados)
+ * function doPost(e) {
+ *   try {
+ *     const feedbackSheet = getSheet(FEEDBACK_SHEET_NAME);
+ *     const data = JSON.parse(e.postData.contents);
+ * 
+ *     const timestamp = new Date();
+ *     const experience = data.experience || '';
+ *     const rating = data.rating;
+ *     const reason = data.reason || '';
+ *     const feedback = data.feedback || '';
+ * 
+ *     const aValues = feedbackSheet.getRange("A:A").getValues();
+ *     let lastRowWithContent = 0; 
+ *     for (let i = aValues.length - 1; i >= 0; i--) {
+ *       if (aValues[i][0] && String(aValues[i][0]).trim() !== '') {
+ *         lastRowWithContent = i + 1;
+ *         break;
+ *       }
+ *     }
+ *     
+ *     if (lastRowWithContent === 0) {
+ *         const headers = ["Timestamp", "Experience", "Rating", "Reason", "Feedback", "Classificação"];
+ *         if(feedbackSheet.getLastRow() === 0) {
+ *            feedbackSheet.appendRow(headers);
+ *            lastRowWithContent = 1;
+ *         }
+ *     }
+ * 
+ *     const newRowData = [timestamp, experience, rating, reason, feedback];
+ *     feedbackSheet.getRange(lastRowWithContent + 1, 1, 1, newRowData.length).setValues([newRowData]);
+ * 
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify({ "status": "success", "message": "Feedback received" }))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ * 
+ *   } catch (error) {
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify({ "status": "error", "message": error.message }))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ *   }
+ * }
+ * ```
+ * =============================================================================
+ */
+
 import { Component, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { finalize } from 'rxjs/operators';
 
 // !!! AÇÃO NECESSÁRIA !!!
 // Substitua a URL abaixo pela nova URL do seu App da Web implantado.
-const NEW_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5WTbwGNUm9LhQ1u_CxEIKGZqWfC31erMU6Fo-npltTM-MtVkn3K89Vw1Eiz1co2qOOw/exec';
+const NEW_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjxeHpXL8nUtVpYLRDWS0sR2930Z3jFhF7Zpmnc79WKcS_RRoqSKcSSoTX88_ZSDe-ow/exec';
 
 export const AppComponent = Component({
   selector: 'app-root',
@@ -16,7 +180,7 @@ export const AppComponent = Component({
     <div class="bg-[#f4f0e8]/95 backdrop-blur-sm rounded-xl shadow-2xl p-8 max-w-2xl w-full text-zinc-800 transform transition-all duration-500 flex flex-col max-h-full">
 
     @switch (submissionState()) {
-      @case ('selecting') {
+      @case ('selectingParent') {
         <div class="text-center animate-fade-in flex flex-col flex-grow min-h-0">
           <div class="flex-shrink-0">
             <h2 class="text-xl font-bold text-zinc-700 mb-4">Avaliação da Experiência</h2>
@@ -43,7 +207,7 @@ export const AppComponent = Component({
             <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
                 <div class="flex flex-col gap-4">
                   @for (exp of experiences(); track exp.name) {
-                    <button (click)="selectExperience(exp.name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                    <button (click)="selectParent(exp)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
                       <span class="font-bold">{{ exp.name }}</span>
                       <span class="block text-xs font-normal opacity-90">{{ formatDate(exp.dateObj) }}</span>
                     </button>
@@ -52,6 +216,39 @@ export const AppComponent = Component({
             </div>
           </div>
           }
+        </div>
+      }
+
+      @case ('selectingSub') {
+        <div class="animate-fade-in flex flex-col flex-grow min-h-0">
+          <div class="flex-shrink-0 relative">
+              <button (click)="backToParentSelection()" title="Voltar" class="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-[#ff595a] transition-colors p-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+              </button>
+              <h2 class="text-center text-xl font-bold text-zinc-700">
+                <span class="text-zinc-700/80 block text-base font-normal">Evento Principal:</span>
+                {{ selectedParent().name }}
+              </h2>
+          </div>
+          <div class="flex flex-col flex-grow min-h-0">
+            <p class="mt-6 mb-4 text-zinc-600 text-center flex-shrink-0">Selecione o que você deseja avaliar:</p>
+            <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1">
+              <div class="flex flex-col gap-4">
+                <button (click)="startEvaluation(selectedParent().name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ffa400] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                  <span class="font-bold">Avaliar o evento como um todo</span>
+                  <span class="block text-xs font-normal opacity-90">{{ formatDate(selectedParent().dateObj) }}</span>
+                </button>
+                @for (sub of selectedParent().subExperiences; track sub.name) {
+                  <button (click)="startEvaluation(sub.name)" class="w-full text-white py-3 px-6 rounded-lg bg-[#ff595a] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1 text-left">
+                    <span class="font-bold">{{ sub.name }}</span>
+                    <span class="block text-xs font-normal opacity-90">{{ formatDate(sub.dateObj) }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
         </div>
       }
 
@@ -125,7 +322,8 @@ export const AppComponent = Component({
   error = signal('');
   
   // State for form submission
-  submissionState = signal('selecting'); // 'selecting', 'filling', 'submitted'
+  submissionState = signal('selectingParent'); // 'selectingParent', 'selectingSub', 'filling', 'submitted'
+  selectedParent = signal(null);
   selectedExperience = signal(null);
   rating = signal(10);
   reason = signal('');
@@ -152,10 +350,12 @@ export const AppComponent = Component({
       .subscribe({
         next: (response) => {
           if (response.error) {
-            throw new Error(response.error);
+            this.error.set(`Erro retornado pelo servidor: ${response.error}`);
+            return;
           }
           if (!response || !Array.isArray(response.data)) {
-            throw new Error("A resposta do servidor não contém um array 'data'.");
+            this.error.set("A resposta do servidor é inválida ou não contém um array 'data'.");
+            return;
           }
           
           const today = new Date();
@@ -163,7 +363,14 @@ export const AppComponent = Component({
           sevenDaysFromNow.setDate(today.getDate() + 7);
 
           const relevantExperiences = response.data
-            .map(exp => ({...exp, dateObj: new Date(exp.date + 'T00:00:00')}))
+            .map(parent => ({
+              ...parent,
+              dateObj: new Date(parent.date + 'T00:00:00'),
+              subExperiences: (parent.subExperiences || []).map(sub => ({
+                ...sub,
+                dateObj: new Date(sub.date + 'T00:00:00')
+              })).sort((a, b) => a.name.localeCompare(b.name))
+            }))
             .filter(exp => exp.dateObj instanceof Date && !isNaN(exp.dateObj) && exp.dateObj <= sevenDaysFromNow)
             .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
             
@@ -174,12 +381,26 @@ export const AppComponent = Component({
         }
       });
   }
-  
-  selectExperience(experience) {
-    this.selectedExperience.set(experience);
+
+  selectParent(parent) {
+    if (parent.subExperiences && parent.subExperiences.length > 0) {
+      this.selectedParent.set(parent);
+      this.submissionState.set('selectingSub');
+    } else {
+      this.startEvaluation(parent.name);
+    }
+  }
+
+  startEvaluation(experienceName) {
+    this.selectedExperience.set(experienceName);
     this.submissionState.set('filling');
   }
 
+  backToParentSelection() {
+    this.selectedParent.set(null);
+    this.submissionState.set('selectingParent');
+  }
+  
   updateRating(event) {
     const value = event.target.value;
     this.rating.set(Number(value));
@@ -197,7 +418,6 @@ export const AppComponent = Component({
       feedback: this.feedback(),
     };
     
-    // Google Apps Script Web Apps often work better with 'text/plain' to avoid CORS preflight issues
     const headers = new HttpHeaders({ 'Content-Type': 'text/plain;charset=utf-8' });
 
     this.httpClient.post(NEW_SCRIPT_URL, JSON.stringify(payload), { headers })
@@ -218,12 +438,12 @@ export const AppComponent = Component({
 
   reset() {
     this.selectedExperience.set(null);
+    this.selectedParent.set(null);
     this.rating.set(10);
     this.reason.set('');
     this.feedback.set('');
     this.submissionError.set('');
-    this.submissionState.set('selecting');
-    // Refetch experiences in case the list was updated
+    this.submissionState.set('selectingParent');
     this.fetchExperiences();
   }
 
