@@ -243,9 +243,9 @@ export const AppComponent = Component({
                     <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
               </button>
-              <h2 class="text-center text-xl font-bold text-zinc-700">Avaliar Experiências</h2>
+              <h2 class="text-center text-xl font-bold text-zinc-700">Avaliar Experiências de "{{ evaluationGroup().parent.name }}"</h2>
           </div>
-           <p class="text-center text-zinc-600 mb-4 flex-shrink-0">Selecione uma experiência para avaliar. A avaliação do evento principal será liberada após avaliar as demais.</p>
+           <p class="text-center text-zinc-600 mb-4 flex-shrink-0">Por favor, avalie individualmente cada uma das experiências abaixo.</p>
           
           <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1 space-y-3">
             @for (sub of evaluationGroup().children; track sub.pk) {
@@ -254,7 +254,7 @@ export const AppComponent = Component({
                 [class]="isEvaluated(sub.pk) ? 'bg-green-100 text-green-800 opacity-80 cursor-not-allowed' : 'bg-white/70 hover:bg-white/100 hover:shadow-md transform hover:-translate-y-px'">
                 <div>
                   <p class="font-bold text-zinc-800">{{ sub.name }}</p>
-                  <p class="text-xs text-zinc-500">{{ formatDate(sub.dateObj) }} (Sub-experiência)</p>
+                  <p class="text-xs text-zinc-500">{{ formatDate(sub.dateObj) }}</p>
                 </div>
                 @if(isEvaluated(sub.pk)) {
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -265,30 +265,17 @@ export const AppComponent = Component({
             }
           </div>
 
-          <div class="pt-4 mt-4 border-t border-gray-200 flex-shrink-0">
-            <button (click)="startEvaluation(evaluationGroup().parent)" [disabled]="!allChildrenEvaluated() || isEvaluated(evaluationGroup().parent.pk)"
-              class="w-full text-left p-3 rounded-lg shadow-sm transition-all duration-300 flex items-center justify-between"
-              [class]="isEvaluated(evaluationGroup().parent.pk) ? 'bg-green-100 text-green-800 opacity-80 cursor-not-allowed' : !allChildrenEvaluated() ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-[#ff595a]/20 hover:bg-[#ff595a]/30 hover:shadow-md transform hover:-translate-y-px'">
-              <div>
-                <p class="font-bold text-[#ff595a]">{{ evaluationGroup().parent.name }}</p>
-                <p class="text-xs text-zinc-500">{{ formatDate(evaluationGroup().parent.dateObj) }} (Evento Principal)</p>
-              </div>
-              @if(isEvaluated(evaluationGroup().parent.pk)) {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              } @else if (!allChildrenEvaluated()) {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              }
-            </button>
-          </div>
         </div>
       }
 
       @case ('filling') {
         <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow px-4">
+          @if (isEvaluatingParentEvent()) {
+            <div class="bg-[#aec5e7]/30 border-l-4 border-[#aec5e7] text-zinc-800 p-4 rounded-r-lg -mx-4 mt-2">
+              <p class="font-bold">Avaliação Geral do Evento</p>
+              <p class="text-sm mt-1">Para finalizar, por favor, avalie a experiência do evento <span class="font-semibold">{{ evaluationGroup().parent.name }}</span> como um todo.</p>
+            </div>
+          }
           <div class="text-center">
               <h2 class="text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ currentExperience().name }}</span></h2>
           </div>
@@ -377,6 +364,13 @@ export const AppComponent = Component({
     }
     const evaluated = this.evaluatedPks();
     return group.children.every(child => evaluated.has(child.pk));
+  });
+
+  isEvaluatingParentEvent = computed(() => {
+    const current = this.currentExperience();
+    const group = this.evaluationGroup();
+    if (!current || !group) return false;
+    return current.pk === group.parent.pk;
   });
 
   ngOnInit() {
@@ -486,7 +480,11 @@ export const AppComponent = Component({
 
             if (wasParent) {
                 this.submissionState.set('submitted');
+            } else if (this.allChildrenEvaluated()) {
+                // This was the last child, now evaluate the parent
+                this.startEvaluation(this.evaluationGroup().parent);
             } else {
+                // Go back to the list of children
                 this.submissionState.set('confirmingGroup');
             }
           } else {
