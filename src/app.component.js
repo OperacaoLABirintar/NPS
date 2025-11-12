@@ -238,14 +238,11 @@ export const AppComponent = Component({
       @case ('confirmingGroup') {
         <div class="animate-fade-in flex flex-col flex-grow min-h-0">
           <div class="flex-shrink-0 relative mb-4">
-              <button (click)="backToParentSelection()" title="Voltar" class="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-[#ff595a] transition-colors p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-                  </svg>
-              </button>
               <h2 class="text-center text-xl font-bold text-zinc-700">Avaliar Experiências de "{{ evaluationGroup().parent.name }}"</h2>
           </div>
-           <p class="text-center text-zinc-600 mb-4 flex-shrink-0">Por favor, avalie individualmente cada uma das experiências abaixo.</p>
+           <p class="text-center text-zinc-600 mb-4 flex-shrink-0">
+            <strong>Atenção:</strong> Avalie apenas as experiências abaixo das quais você participou. <br>Se não participou de nenhuma, pode clicar em "Concluir e Finalizar".
+           </p>
           
           <div class="overflow-y-auto overflow-x-hidden flex-grow px-4 pt-1 space-y-3">
             @for (sub of evaluationGroup().children; track sub.pk) {
@@ -265,17 +262,17 @@ export const AppComponent = Component({
             }
           </div>
 
+          <div class="flex-shrink-0 pt-6 text-center">
+            <button (click)="finishEvaluation()" class="text-white font-bold py-3 px-8 rounded-lg bg-[#b2dcd5] hover:bg-opacity-90 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">
+              Concluir e Finalizar
+            </button>
+          </div>
+
         </div>
       }
 
       @case ('filling') {
         <div class="space-y-6 animate-fade-in overflow-y-auto overflow-x-hidden flex-grow px-4">
-          @if (isEvaluatingParentEvent()) {
-            <div class="bg-[#aec5e7]/30 border-l-4 border-[#aec5e7] text-zinc-800 p-4 rounded-r-lg -mx-4 mt-2">
-              <p class="font-bold">Avaliação Geral do Evento</p>
-              <p class="text-sm mt-1">Para finalizar, por favor, avalie a experiência do evento <span class="font-semibold">{{ evaluationGroup().parent.name }}</span> como um todo.</p>
-            </div>
-          }
           <div class="text-center">
               <h2 class="text-xl font-bold text-zinc-700">Avaliação: <span class="text-[#ff595a]">{{ currentExperience().name }}</span></h2>
           </div>
@@ -344,7 +341,7 @@ export const AppComponent = Component({
   error = signal('');
   
   // State for form submission
-  submissionState = signal('selectingParent'); // 'selectingParent', 'confirmingGroup', 'filling', 'submitted'
+  submissionState = signal('selectingParent'); // 'selectingParent', 'filling', 'confirmingGroup', 'submitted'
   evaluationGroup = signal(null);
   currentExperience = signal(null);
   evaluatedPks = signal(new Set());
@@ -356,22 +353,6 @@ export const AppComponent = Component({
   submissionError = signal('');
 
   showReason = computed(() => this.rating() < 10);
-
-  allChildrenEvaluated = computed(() => {
-    const group = this.evaluationGroup();
-    if (!group || !group.children || group.children.length === 0) {
-      return true;
-    }
-    const evaluated = this.evaluatedPks();
-    return group.children.every(child => evaluated.has(child.pk));
-  });
-
-  isEvaluatingParentEvent = computed(() => {
-    const current = this.currentExperience();
-    const group = this.evaluationGroup();
-    if (!current || !group) return false;
-    return current.pk === group.parent.pk;
-  });
 
   ngOnInit() {
     this.fetchExperiences();
@@ -429,12 +410,7 @@ export const AppComponent = Component({
   prepareEvaluationGroup(parent) {
     const group = { parent, children: parent.subExperiences || [] };
     this.evaluationGroup.set(group);
-
-    if (group.children.length > 0) {
-        this.submissionState.set('confirmingGroup');
-    } else {
-        this.startEvaluation(parent);
-    }
+    this.startEvaluation(parent);
   }
 
   startEvaluation(experience) {
@@ -452,6 +428,10 @@ export const AppComponent = Component({
   updateRating(event) {
     const value = event.target.value;
     this.rating.set(Number(value));
+  }
+
+  finishEvaluation() {
+    this.submissionState.set('submitted');
   }
 
   submitFeedback() {
@@ -473,19 +453,21 @@ export const AppComponent = Component({
       .subscribe({
         next: (response) => {
           if (response.status === 'success') {
-            const evaluatedPk = this.currentExperience().pk;
-            this.evaluatedPks.update(pks => new Set(pks).add(evaluatedPk));
+            const evaluatedExperience = this.currentExperience();
+            this.evaluatedPks.update(pks => new Set(pks).add(evaluatedExperience.pk));
             
-            const wasParent = evaluatedPk === this.evaluationGroup().parent.pk;
+            const wasParent = evaluatedExperience.pk === this.evaluationGroup().parent.pk;
+            const hasChildren = this.evaluationGroup().children.length > 0;
 
             if (wasParent) {
-                this.submissionState.set('submitted');
-            } else if (this.allChildrenEvaluated()) {
-                // This was the last child, now evaluate the parent
-                this.startEvaluation(this.evaluationGroup().parent);
-            } else {
-                // Go back to the list of children
+              if (hasChildren) {
                 this.submissionState.set('confirmingGroup');
+              } else {
+                this.submissionState.set('submitted');
+              }
+            } else {
+              // It was a child, go back to the list of children
+              this.submissionState.set('confirmingGroup');
             }
           } else {
             this.submissionError.set(response.message || 'Ocorreu um erro desconhecido no servidor.');
